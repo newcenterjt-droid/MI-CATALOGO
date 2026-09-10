@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#075e54">
+<title>Mi catálogo</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Arial,sans-serif;background:#f2f5f4;color:#20332e}
+header{background:#075e54;color:white;padding:23px 18px}
+header h1{margin:0;font-size:26px}
+header p{margin:6px 0 0;font-size:14px}
+main{max-width:900px;margin:auto;padding:16px}
+button,.fileButton{border:0;border-radius:10px;background:#075e54;color:white;padding:13px 16px;font:inherit;font-weight:600;cursor:pointer;text-align:center}
+button:disabled{opacity:.5;cursor:wait}
+.secondary{background:#e3eeea;color:#075e54}
+.danger{background:#fff0ef;color:#a52b24}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+input,textarea{width:100%;padding:13px;border:1px solid #baccc5;border-radius:10px;font:inherit;background:white;color:#20332e}
+input[type=file]{padding:10px;font-size:14px}
+textarea{resize:vertical;min-height:95px}
+label{display:block;margin:13px 0 6px;font-weight:600}
+.note{font-size:13px;color:#536d62;line-height:1.5}
+#count{margin:14px 0}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px}
+.card{background:white;border-radius:15px;overflow:hidden;border:1px solid #dfe8e4}
+.card>img{width:100%;aspect-ratio:1;object-fit:contain;background:#edf2ef;display:block}
+.cardBody{padding:12px}
+.card h2{font-size:17px;margin:0 0 7px;overflow-wrap:anywhere}
+.price{font-weight:750;color:#075e54;margin:6px 0;font-size:18px}
+.category{font-size:12px;color:#536d62;overflow-wrap:anywhere}
+.description{font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.cardActions{display:grid;gap:7px;margin-top:12px}
+.cardActions button{font-size:13px;padding:10px}
+.smallActions{display:flex;gap:5px}
+.smallActions button{flex:1}
+#empty{padding:30px 10px;text-align:center;color:#536d62}
+dialog{border:0;border-radius:16px;padding:20px;width:calc(100% - 24px);max-width:520px;max-height:90dvh;overflow:auto}
+dialog::backdrop{background:#0008}
+dialog h2{margin-top:0}
+.dialogActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
+.preview{width:100%;max-height:270px;object-fit:contain;background:#f1f5f3;border-radius:10px;margin-top:12px}
+#shareImage{width:100%;border-radius:10px}
+#status{background:#fff4d9;border-radius:10px;padding:12px;line-height:1.5}
+footer{margin:24px 0;font-size:12px;color:#536d62;line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+<h1>Mi catálogo</h1>
+<p>Tus productos, listos para compartir</p>
+</header>
+
+<main>
+<p id="status" role="status" hidden></p>
+<div class="toolbar">
+<button id="add" disabled>＋ Agregar producto</button>
+<button id="backup" class="secondary" disabled>Descargar copia</button>
+<button id="restore" class="secondary" disabled>Restaurar copia</button>
+</div>
+<input id="backupFile" type="file" accept=".json,application/json" hidden>
+<input id="search" type="search" placeholder="Buscar por nombre o categoría…" aria-label="Buscar productos">
+<p class="note">Guardado en este navegador y celular. Descarga una copia de seguridad con frecuencia.</p>
+<p id="count"></p>
+<div id="grid"></div>
+<p id="empty" hidden>Aún no tienes productos. Toca “Agregar producto” para comenzar.</p>
+<footer>
+Tus fotos y productos no se envían a un servidor desde esta app.
+Si borras los datos del navegador, puedes perder el catálogo.
+Usa siempre el mismo navegador, sin modo incógnito.
+La copia de seguridad incluye fotos y datos: guárdala en un lugar seguro.
+</footer>
+</main>
+
+<dialog id="editor">
+<form id="productForm">
+<h2 id="editorTitle">Agregar producto</h2>
+<label for="name">Nombre *</label>
+<input id="name" required maxlength="100" placeholder="Ejemplo: Bolso artesanal">
+
+<label for="price">Precio</label>
+<input id="price" maxlength="45" placeholder="Ejemplo: $ 25.000 o USD 20">
+
+<label for="category">Categoría</label>
+<input id="category" maxlength="60" placeholder="Ejemplo: Accesorios">
+
+<label for="description">Descripción</label>
+<textarea id="description" maxlength="700" placeholder="Colores, medidas, disponibilidad…"></textarea>
+
+<label for="photo">Foto *</label>
+<input id="photo" type="file" accept="image/*">
+<p class="note">Puedes elegir una imagen de tu galería. Al editar, no hace falta volver a elegirla.</p>
+<img id="photoPreview" class="preview" alt="Vista previa del producto" hidden>
+
+<div class="dialogActions">
+<button id="save" type="submit">Guardar producto</button>
+<button id="cancel" class="secondary" type="button">Cancelar</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="shareDialog">
+<h2>Compartir producto</h2>
+<p class="note">Toca “Compartir imagen” y elige WhatsApp y tu contacto. Si no aparece, descarga la imagen y adjúntala desde WhatsApp.</p>
+<img id="shareImage" alt="Ficha del producto">
+<div class="dialogActions">
+<button id="sendImage">Compartir imagen</button>
+<button id="downloadImage" class="secondary">Descargar imagen</button>
+<button id="closeShare" class="secondary">Cerrar</button>
+</div>
+</dialog>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let db;
+let products = [];
+let editingId = null;
+let currentPhoto = "";
+let photoBusy = false;
+let photoJob = 0;
+let preparedFile = null;
+let previewUrl = "";
+
+function message(text) {
+  $("status").textContent = text;
+  $("status").hidden = !text;
+}
+
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("miCatalogoLocal", 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("products", {keyPath:"id"});
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => message("Cierra otras pestañas de este catálogo y vuelve a abrirlo.");
+  });
+}
+
+function getProducts() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("products", "readonly");
+    const request = tx.objectStore("products").getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function writeProducts(items, replace = false, deleteId = null) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("products", "readwrite");
+    const store = tx.objectStore("products");
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("Operación cancelada"));
+    if (replace) store.clear();
+    if (deleteId !== null) store.delete(deleteId);
+    for (const item of items) store.put(item);
+  });
+}
+
+async function refresh() {
+  products = await getProducts();
+  products.sort((a,b) => b.updated - a.updated);
+  render();
+}
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function action(text, className, handler) {
+  const button = element("button", className, text);
+  button.type = "button";
+  button.onclick = handler;
+  return button;
+}
+
+function render() {
+  const query = $("search").value.trim().toLocaleLowerCase();
+  const visible = products.filter(p =>
+    (p.name + " " + p.category).toLocaleLowerCase().includes(query)
+  );
+  $("grid").replaceChildren();
+  $("count").textContent = `${visible.length} de ${products.length} productos`;
+  $("empty").hidden = visible.length > 0;
+  $("empty").textContent = products.length
+    ? "No hay productos que coincidan con tu búsqueda."
+    : "Aún no tienes productos. Toca “Agregar producto” para comenzar.";
+
+  for (const p of visible) {
+    const card = element("article","card");
+    const img = element("img");
+    img.src = p.photo;
+    img.alt = p.name;
+    img.loading = "lazy";
+    const body = element("div","cardBody");
+    body.append(element("h2","",p.name));
+    if (p.price) body.append(element("p","price",p.price));
+    if (p.category) body.append(element("p","category",p.category));
+    if (p.description) body.append(element("p","description",p.description));
+
+    const buttons = element("div","cardActions");
+    buttons.append(action("Compartir", "", e => prepareShare(p, e.currentTarget)));
+    const small = element("div","smallActions");
+    small.append(
+      action("Editar","secondary",() => openEditor(p)),
+      action("Eliminar","danger",async () => {
+        if (!confirm(`¿Eliminar "${p.name}" del catálogo?`)) return;
+        try {
+          await writeProducts([], false, p.id);
+          await refresh();
+          message("Producto eliminado.");
+        } catch (error) {
+          message("No se pudo eliminar el producto. Inténtalo nuevamente.");
+        }
+      })
+    );
+    buttons.append(small);
+    body.append(buttons);
+    card.append(img,body);
+    $("grid").append(card);
+  }
+}
+
+function showPhoto() {
+  $("photoPreview").hidden = !currentPhoto;
+  if (currentPhoto) $("photoPreview").src = currentPhoto;
+  else $("photoPreview").removeAttribute("src");
+}
+
+function openEditor(p = null) {
+  photoJob++;
+  photoBusy = false;
+  $("save").disabled = false;
+  $("productForm").reset();
+  editingId = p ? p.id : null;
+  currentPhoto = p ? p.photo : "";
+  $("editorTitle").textContent = p ? "Editar producto" : "Agregar producto";
+  $("name").value = p ? p.name : "";
+  $("price").value = p ? p.price : "";
+  $("category").value = p ? p.category : "";
+  $("description").value = p ? p.description : "";
+  showPhoto();
+  $("editor").showModal();
+}
+
+function loadImage(source) {
+  return new Promise((resolve,reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Imagen no compatible"));
+    img.src = source;
+  });
+}
+
+async function compressPhoto(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Elige una imagen.");
+  if (file.size > 25 * 1024 * 1024) throw new Error("La foto es demasiado grande. Elige una menor de 25 MB.");
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const scale = Math.min(1, 1200 / Math.max(img.naturalWidth,img.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1,Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1,Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    return canvas.toDataURL("image/jpeg",0.82);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+$("photo").onchange = async () => {
+  const file = $("photo").files[0];
+  if (!file) return;
+  const job = ++photoJob;
+  photoBusy = true;
+  $("save").disabled = true;
+  try {
+    const photo = await compressPhoto(file);
+    if (job !== photoJob) return;
+    currentPhoto = photo;
+    showPhoto();
+  } catch (error) {
+    if (job === photoJob) {
+      $("photo").value = "";
+      alert(error.message || "No se pudo abrir la imagen. Prueba con una foto JPG.");
+    }
+  } finally {
+    if (job === photoJob) {
+      photoBusy = false;
+      $("save").disabled = false;
+    }
+  }
+};
+
+$("productForm").onsubmit = async event => {
+  event.preventDefault();
+  if (photoBusy) return;
+  const name = $("name").value.trim();
+  if (!name) return alert("Escribe el nombre del producto.");
+  if (!currentPhoto) return alert("Elige una foto para el producto.");
+  $("save").disabled = true;
+  const p = {
+    id: editingId || crypto.randomUUID(),
+    name,
+    price: $("price").value.trim(),
+    category: $("category").value.trim(),
+    description: $("description").value.trim(),
+    photo: currentPhoto,
+    updated: Date.now()
+  };
+  try {
+    await writeProducts([p]);
+    $("editor").close();
+    await refresh();
+    message("Producto guardado en este dispositivo.");
+  } catch (error) {
+    alert("No se pudo guardar. Puede faltar espacio en el navegador. Descarga una copia de seguridad antes de borrar datos.");
+  } finally {
+    $("save").disabled = false;
+  }
+};
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url),60000);
+}
+
+$("backup").onclick = async () => {
+  try {
+    const saved = await getProducts();
+    const data = JSON.stringify({
+      app:"mi-catalogo",
+      version:1,
+      exportedAt:new Date().toISOString(),
+      products:saved
+    });
+    download(new Blob([data],{type:"application/json"}),
+      "catalogo-respaldo-" + new Date().toISOString().slice(0,10) + ".json");
+    message("Se solicitó la descarga de tu copia. Comprueba que esté en Descargas y guárdala también fuera de este celular.");
+  } catch (error) {
+    message("No se pudo crear la copia de seguridad.");
+  }
+};
+
+$("restore").onclick = () => $("backupFile").click();
+
+function validProduct(p) {
+  return p && typeof p.id === "string" && p.id.length > 0 && p.id.length < 200
+    && typeof p.name === "string" && p.name.trim().length > 0 && p.name.length <= 100
+    && typeof p.price === "string" && p.price.length <= 45
+    && typeof p.category === "string" && p.category.length <= 60
+    && typeof p.description === "string" && p.description.length <= 700
+    && typeof p.photo === "string"
+    && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(p.photo)
+    && p.photo.length < 6000000
+    && Number.isFinite(p.updated);
+}
+
+$("backupFile").onchange = async () => {
+  const file = $("backupFile").files[0];
+  if (!file) return;
+  try {
+    if (file.size > 150 * 1024 * 1024) {
+      throw new Error("Esta copia supera el límite de importación de 150 MB.");
+    }
+    const data = JSON.parse(await file.text());
+    if (data.app !== "mi-catalogo" || data.version !== 1 ||
+        !Array.isArray(data.products) || !data.products.every(validProduct) ||
+        new Set(data.products.map(p => p.id)).size !== data.products.length) {
+      throw new Error("El archivo no es una copia válida de esta app.");
+    }
+    if (!confirm(`Esta copia contiene ${data.products.length} productos.\n\nREEMPLAZARÁ todo el catálogo actual. Descarga primero una copia del actual si quieres conservarlo.\n\n¿Continuar?`)) return;
+    await writeProducts(data.products,true);
+    await refresh();
+    message("Copia restaurada correctamente.");
+  } catch (error) {
+    alert("No se pudo restaurar: " + (error.message || "Error de almacenamiento."));
+  } finally {
+    $("backupFile").value = "";
+  }
+};
+
+function wrapLines(ctx,text,width) {
+  const lines = [];
+  for (const paragraph of text.split("\n")) {
+    let line = "";
+    for (const character of paragraph) {
+      if (line && ctx.measureText(line + character).width > width) {
+        lines.push(line.trimEnd());
+        line = character === " " ? "" : character;
+      } else {
+        line += character;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+async function makeCard(p) {
+  const image = await loadImage(p.photo);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1000;
+  let ctx = canvas.getContext("2d");
+  const sections = [];
+  function section(text,font,color,lineHeight) {
+    if (!text) return;
+    ctx.font = font;
+    sections.push({lines:wrapLines(ctx,text,880),font,color,lineHeight});
+  }
+  section(p.name,"bold 44px sans-serif","#173e34",55);
+  section(p.price,"bold 42px sans-serif","#075e54",54);
+  section(p.category,"28px sans-serif","#536d62",38);
+  section(p.description,"30px sans-serif","#20332e",42);
+  const textHeight = sections.reduce((n,s) => n + s.lines.length*s.lineHeight + 24,0);
+  canvas.height = 850 + textHeight + 35;
+  ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#075e54";
+  ctx.fillRect(0,0,1000,16);
+  ctx.fillStyle = "#f1f5f3";
+  ctx.fillRect(40,40,920,760);
+  const scale = Math.min(880/image.naturalWidth,720/image.naturalHeight);
+  const w = image.naturalWidth*scale;
+  const h = image.naturalHeight*scale;
+  ctx.drawImage(image,40+(920-w)/2,40+(760-h)/2,w,h);
+  let y = 850;
+  ctx.textBaseline = "top";
+  for (const s of sections) {
+    ctx.font = s.font;
+    ctx.fillStyle = s.color;
+    for (const line of s.lines) {
+      ctx.fillText(line,60,y);
+      y += s.lineHeight;
+    }
+    y += 24;
+  }
+  return new Promise((resolve,reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("No se pudo crear la ficha")),"image/jpeg",0.9);
+  });
+}
+
+async function prepareShare(p, button) {
+  button.disabled = true;
+  button.textContent = "Preparando…";
+  try {
+    const blob = await makeCard(p);
+    const safeName = p.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ_-]/g,"_").slice(0,60) || "producto";
+    preparedFile = new File([blob],safeName + ".jpg",{type:"image/jpeg"});
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    $("shareImage").src = previewUrl;
+    $("shareDialog").showModal();
+  } catch (error) {
+    alert("No se pudo preparar la imagen para compartir.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Compartir";
+  }
+}
+
+$("sendImage").onclick = async () => {
+  if (!preparedFile) return;
+  if (!navigator.canShare || !navigator.canShare({files:[preparedFile]})) {
+    alert("Este navegador no permite compartir archivos directamente. Toca “Descargar imagen” y adjúntala en WhatsApp.");
+    return;
+  }
+  try {
+    await navigator.share({files:[preparedFile]});
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      alert("No se pudo compartir directamente. Descarga la imagen y envíala desde WhatsApp.");
+    }
+  }
+};
+
+$("downloadImage").onclick = () => {
+  if (preparedFile) download(preparedFile,preparedFile.name);
+};
+
+$("closeShare").onclick = () => $("shareDialog").close();
+$("cancel").onclick = () => $("editor").close();
+$("add").onclick = () => openEditor();
+$("search").oninput = render;
+
+(async () => {
+  try {
+    db = await openDatabase();
+    await refresh();
+    $("add").disabled = false;
+    $("backup").disabled = false;
+    $("restore").disabled = false;
+  } catch (error) {
+    message("No se pudo abrir el almacenamiento local. Abre la página en Chrome, fuera del modo incógnito, y comprueba que el almacenamiento esté permitido.");
+  }
+})();
+</script>
+</body>
+</html>
