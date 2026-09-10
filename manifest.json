@@ -1,0 +1,13 @@
+{
+  "name": "Mi Catálogo",
+  "short_name": "Catálogo",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#f2f5f4",
+  "theme_color": "#075e54",
+  "icons": [{
+    "src": "https://cdn-icons-png.flaticon.com/512/3082/3082060.png",
+    "sizes": "512x512",
+    "type": "image/png"
+  }]
+}
