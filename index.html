@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#075e54">
+<title>Mi Catálogo</title>
+<link rel="manifest" href="manifest.json">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Arial,sans-serif;background:#f2f5f4;color:#20332e}
+header{background:#075e54;color:white;padding:20px 16px}
+header h1{margin:0;font-size:24px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+button{border:0;border-radius:8px;background:#075e54;color:white;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.secondary{background:#e3eeea;color:#075e54}
+.danger{background:#fff0ef;color:#a52b24}
+input,textarea{width:100%;padding:12px;border:1px solid #baccc5;border-radius:8px;font:inherit;background:white}
+textarea{resize:vertical;min-height:80px}
+label{display:block;margin:12px 0 6px;font-weight:600;font-size:14px}
+.note{font-size:12px;color:#536d62;line-height:1.4}
+#filters{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0;overflow-x:auto;padding-bottom:4px}
+.filterBtn{background:white;border:1px solid #075e54;color:#075e54;padding:8px 14px;border-radius:20px;font-size:13px;white-space:nowrap}
+.filterBtn.active{background:#075e54;color:white}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:12px}
+.card{background:white;border-radius:12px;overflow:hidden;border:1px solid #dfe8e4}
+.cardImg{position:relative;width:100%;aspect-ratio:1;background:#edf2ef}
+.cardImg img{width:100%;height:100%;object-fit:cover;display:block}
+.photoCount{position:absolute;bottom:6px;right:6px;background:#0008;color:white;padding:3px 8px;border-radius:12px;font-size:11px}
+.cardBody{padding:10px}
+.card h3{margin:0 0 4px;font-size:16px;overflow-wrap:anywhere}
+.price{font-weight:700;color:#075e54;font-size:16px;margin:4px 0}
+.category{font-size:11px;color:#536d62;text-transform:uppercase;letter-spacing:0.5px}
+.cardActions{display:grid;gap:6px;margin-top:10px}
+.cardActions button{font-size:12px;padding:8px}
+.smallActions{display:flex;gap:4px}
+.smallActions button{flex:1}
+dialog{border:0;border-radius:14px;padding:18px;width:calc(100% - 20px);max-width:500px;max-height:88vh;overflow:auto}
+dialog::backdrop{background:#0008}
+.dialogActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.photoGallery{display:flex;gap:8px;overflow-x:auto;margin:10px 0;padding-bottom:8px}
+.photoGallery img{height:80px;width:80px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid #dfe8e4}
+.preview{width:100%;max-height:250px;object-fit:contain;background:#f1f5f3;border-radius:8px;margin-top:10px}
+#status{background:#fff4d9;border-radius:8px;padding:10px;font-size:13px;margin:10px 0}
+footer{margin:20px 0;font-size:11px;color:#536d62;line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+<h1>📦 Mi Catálogo</h1>
+<p style="margin:4px 0 0;font-size:13px;opacity:.9">Tus productos, listos para compartir</p>
+</header>
+
+<main style="max-width:900px;margin:auto;padding:12px">
+<p id="status" role="status" hidden></p>
+
+<div class="toolbar">
+<button id="add" disabled>＋ Nuevo producto</button>
+<button id="backup" class="secondary" disabled> Copia</button>
+<button id="restore" class="secondary" disabled>⬆ Restaurar</button>
+</div>
+<input id="backupFile" type="file" accept=".json" hidden>
+
+<input id="search" type="search" placeholder="🔍 Buscar producto…" style="margin-top:8px">
+
+<div id="filters"></div>
+<p class="note" id="count" style="margin:8px 0"></p>
+
+<div id="grid"></div>
+<p id="empty" hidden style="text-align:center;padding:30px;color:#536d62">Sin productos. Toca "Nuevo producto" para comenzar.</p>
+
+<footer>
+<strong>Nota importante:</strong> Tus fotos y datos se guardan en este dispositivo. 
+Si borras los datos del navegador, perderás el catálogo. 
+Usa siempre "Descargar Copia" para respaldar tus productos.
+</footer>
+</main>
+
+<dialog id="editor">
+<form id="productForm">
+<h2 id="editorTitle" style="margin-top:0">Nuevo producto</h2>
+
+<label for="name">Nombre *</label>
+<input id="name" required maxlength="100" placeholder="Ej: Zapatos deportivos">
+
+<label for="price">Precio</label>
+<input id="price" maxlength="40" placeholder="Ej: $25.000">
+
+<label for="category">Categoría</label>
+<input id="category" maxlength="50" placeholder="Ej: Calzado">
+
+<label for="description">Descripción</label>
+<textarea id="description" maxlength="600" placeholder="Detalles, tallas, colores..."></textarea>
+
+<label>Fotos (máx. 5) *</label>
+<input id="photoInput" type="file" accept="image/*" multiple>
+<p class="note">Puedes seleccionar varias imágenes a la vez.</p>
+<div id="photoPreview" class="photoGallery"></div>
+
+<div class="dialogActions">
+<button id="save" type="submit">Guardar</button>
+<button id="cancel" class="secondary" type="button">Cancelar</button>
+</div>
+</form>
+</dialog>
+
+<dialog id="shareDialog">
+<h2 style="margin-top:0">Compartir producto</h2>
+<img id="shareImage" style="width:100%;border-radius:8px" alt="Ficha">
+<div class="dialogActions">
+<button id="sendImage">Compartir</button>
+<button id="downloadImage" class="secondary">Descargar</button>
+<button id="closeShare" class="secondary">Cerrar</button>
+</div>
+</dialog>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let db, products = [], editingId = null, photoFiles = [], preparedFile = null, previewUrl = "";
+
+function message(text) {
+  $("status").textContent = text;
+  $("status").hidden = !text;
+  setTimeout(() => $("status").hidden = true, 5000);
+}
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("miCatalogoDB", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("products", {keyPath:"id"});
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function getAll() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("products", "readonly");
+    const req = tx.objectStore("products").getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function saveProducts(items, deleteId = null) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("products", "readwrite");
+    const store = tx.objectStore("products");
+    if (deleteId !== null) store.delete(deleteId);
+    for (const item of items) store.put(item);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function refresh() {
+  products = await getAll();
+  products.sort((a,b) => b.updated - a.updated);
+  renderFilters();
+  render();
+}
+
+function renderFilters() {
+  const cats = [...new Set(products.map(p => p.category).filter(c => c))];
+  $("filters").innerHTML = '';
+  const allBtn = document.createElement("button");
+  allBtn.className = "filterBtn active";
+  allBtn.textContent = "Todos";
+  allBtn.onclick = () => { document.querySelectorAll(".filterBtn").forEach(b => b.classList.remove("active")); allBtn.classList.add("active"); render(); };
+  $("filters").append(allBtn);
+  cats.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = "filterBtn";
+    btn.textContent = cat;
+    btn.onclick = () => { document.querySelectorAll(".filterBtn").forEach(b => b.classList.remove("active")); btn.classList.add("active"); render(cat); };
+    $("filters").append(btn);
+  });
+}
+
+function render(filterCat = null) {
+  const q = $("search").value.toLowerCase();
+  const filtered = products.filter(p => {
+    const matchText = (p.name + " " + p.category).toLowerCase().includes(q);
+    const matchCat = filterCat ? p.category === filterCat : true;
+    return matchText && matchCat;
+  });
+  $("grid").innerHTML = "";
+  $("count").textContent = `${filtered.length} de ${products.length} productos`;
+  $("empty").hidden = filtered.length > 0;
+  
+  filtered.forEach(p => {
+    const card = document.createElement("article");
+    card.className = "card";
+    const imgDiv = document.createElement("div");
+    imgDiv.className = "cardImg";
+    const img = document.createElement("img");
+    img.src = p.photos[0];
+    img.alt = p.name;
+    imgDiv.append(img);
+    if (p.photos.length > 1) {
+      const count = document.createElement("span");
+      count.className = "photoCount";
+      count.textContent = `+${p.photos.length}`;
+      imgDiv.append(count);
+    }
+    const body = document.createElement("div");
+    body.className = "cardBody";
+    body.innerHTML = `<h3>${p.name}</h3>`;
+    if (p.price) body.innerHTML += `<p class="price">${p.price}</p>`;
+    if (p.category) body.innerHTML += `<p class="category">${p.category}</p>`;
+    if (p.description) body.innerHTML += `<p style="font-size:13px;margin:4px 0 0;white-space:pre-wrap">${p.description}</p>`;
+    
+    const actions = document.createElement("div");
+    actions.className = "cardActions";
+    const shareBtn = document.createElement("button");
+    shareBtn.textContent = "Compartir";
+    shareBtn.onclick = () => prepareShare(p);
+    const small = document.createElement("div");
+    small.className = "smallActions";
+    const editBtn = document.createElement("button");
+    editBtn.className = "secondary";
+    editBtn.textContent = "Editar";
+    editBtn.onclick = () => openEditor(p);
+    const delBtn = document.createElement("button");
+    delBtn.className = "danger";
+    delBtn.textContent = "Eliminar";
+    delBtn.onclick = async () => {
+      if(confirm(`¿Eliminar "${p.name}"?`)) {
+        await saveProducts([], p.id);
+        await refresh();
+        message("Producto eliminado");
+      }
+    };
+    small.append(editBtn, delBtn);
+    actions.append(shareBtn, small);
+    body.append(actions);
+    card.append(imgDiv, body);
+    $("grid").append(card);
+  });
+}
+
+async function compressPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, 1000 / Math.max(img.width, img.height));
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+$("photoInput").onchange = async () => {
+  const files = Array.from($("photoInput").files);
+  if (files.length + photoFiles.length > 5) {
+    alert("Máximo 5 fotos por producto");
+    return;
+  }
+  $("save").disabled = true;
+  for (const file of files) {
+    try {
+      const compressed = await compressPhoto(file);
+      photoFiles.push(compressed);
+    } catch(e) { console.error(e); }
+  }
+  renderPreviews();
+  $("save").disabled = false;
+  $("photoInput").value = "";
+};
+
+function renderPreviews() {
+  const container = $("photoPreview");
+  container.innerHTML = "";
+  photoFiles.forEach((src, i) => {
+    const img = document.createElement("img");
+    img.src = src;
+    const del = document.createElement("button");
+    del.textContent = "×";
+    del.style.cssText = "position:absolute;margin:-70px 0 0 70px;padding:2px 6px;border-radius:50%;background:#a52b24;color:white;border:0;cursor:pointer";
+    del.onclick = () => { photoFiles.splice(i, 1); renderPreviews(); };
+    const wrap = document.createElement("div");
+    wrap.style.position = "relative";
+    wrap.append(img, del);
+    container.append(wrap);
+  });
+}
+
+function openEditor(p = null) {
+  editingId = p ? p.id : null;
+  photoFiles = p ? [...p.photos] : [];
+  $("productForm").reset();
+  $("editorTitle").textContent = p ? "Editar producto" : "Nuevo producto";
+  $("name").value = p ? p.name : "";
+  $("price").value = p ? p.price : "";
+  $("category").value = p ? p.category : "";
+  $("description").value = p ? p.description : "";
+  renderPreviews();
+  $("editor").showModal();
+}
+
+$("productForm").onsubmit = async e => {
+  e.preventDefault();
+  const name = $("name").value.trim();
+  if (!name) return alert("Nombre requerido");
+  if (photoFiles.length === 0) return alert("Al menos 1 foto requerida");
+  
+  $("save").disabled = true;
+  const product = {
+    id: editingId || crypto.randomUUID(),
+    name,
+    price: $("price").value.trim(),
+    category: $("category").value.trim(),
+    description: $("description").value.trim(),
+    photos: [...photoFiles],
+    updated: Date.now()
+  };
+  
+  try {
+    await saveProducts([product]);
+    $("editor").close();
+    await refresh();
+    message("Producto guardado");
+  } catch (err) {
+    alert("Error al guardar. Verifica el espacio disponible.");
+  } finally {
+    $("save").disabled = false;
+  }
+};
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+$("backup").onclick = async () => {
+  const data = JSON.stringify({ app:"mi-catalogo-v2", version:2, exportedAt:new Date().toISOString(), products });
+  download(new Blob([data], {type:"application/json"}), `catalogo-backup-${new Date().toISOString().slice(0,10)}.json`);
+  message("Copia descargada. Guárdala en un lugar seguro.");
+};
+
+$("restore").onclick = () => $("backupFile").click();
+
+$("backupFile").onchange = async () => {
+  const file = $("backupFile").files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.app !== "mi-catalogo-v2" || !Array.isArray(data.products)) throw new Error("Archivo inválido");
+    if (!confirm(`Restaurar ${data.products.length} productos. Se reemplazará todo. ¿Continuar?`)) return;
+    const tx = db.transaction("products", "readwrite");
+    tx.objectStore("products").clear();
+    data.products.forEach(p => tx.objectStore("products").put(p));
+    tx.oncomplete = async () => { await refresh(); message("Copia restaurada"); };
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+  $("backupFile").value = "";
+};
+
+async function prepareShare(p) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1000;
+  canvas.height = 1200;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0,0,1000,1200);
+  const img = await new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=p.photos[0]; });
+  ctx.drawImage(img, 50, 50, 900, 900);
+  ctx.fillStyle = "#20332e";
+  ctx.font = "bold 40px sans-serif";
+  ctx.fillText(p.name, 50, 1000);
+  if (p.price) { ctx.fillStyle = "#075e54"; ctx.font = "bold 36px sans-serif"; ctx.fillText(p.price, 50, 1050); }
+  if (p.description) { ctx.fillStyle = "#536d62"; ctx.font = "24px sans-serif"; ctx.fillText(p.description.slice(0,50), 50, 1100); }
+  
+  canvas.toBlob(async blob => {
+    preparedFile = new File([blob], `${p.name.replace(/[^a-z0-9]/gi,'_')}.jpg`, {type:"image/jpeg"});
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    $("shareImage").src = previewUrl;
+    $("shareDialog").showModal();
+  }, "image/jpeg", 0.9);
+}
+
+$("sendImage").onclick = async () => {
+  if (navigator.canShare && navigator.canShare({files:[preparedFile]})) {
+    try { await navigator.share({files:[preparedFile]}); } catch(e) {}
+  } else {
+    alert("Descarga la imagen y envíala manualmente por WhatsApp.");
+  }
+};
+$("downloadImage").onclick = () => preparedFile && download(preparedFile, preparedFile.name);
+$("closeShare").onclick = () => $("shareDialog").close();
+$("cancel").onclick = () => $("editor").close();
+$("add").onclick = () => openEditor();
+$("search").oninput = render;
+
+(async () => {
+  try {
+    db = await openDB();
+    await refresh();
+    $("add").disabled = false;
+    $("backup").disabled = false;
+    $("restore").disabled = false;
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").then(() => console.log("Offline listo"));
+    }
+  } catch (err) {
+    message("Error de almacenamiento. Usa Chrome y no borres datos.");
+  }
+})();
+</script>
+</body>
+</html>
